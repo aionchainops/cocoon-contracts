@@ -1,0 +1,6 @@
+[package]
+name = "cocoon"
+edition = "2024.beta"
+
+[addresses]
+cocoon = "0x0"

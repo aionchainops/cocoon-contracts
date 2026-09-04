@@ -1,0 +1,6 @@
+[package]
+name = "cocoon_pay"
+edition = "2024.beta"
+
+[addresses]
+cocoon_pay = "0x0"
