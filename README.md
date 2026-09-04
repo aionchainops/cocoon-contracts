@@ -79,8 +79,15 @@ cd journey && sui move build && sui move test
 cd ../pay && sui move build && sui move test
 ```
 
-`journey` carries tests for the identity and time gates, fund forwarding and
-expiry, and underpayment. Both packages target Move edition `2024.beta`.
+`journey` carries three tests, all passing: the identity and time gates, fund
+forwarding and expiry, and underpayment.
+
+**`pay` has no tests at all.** That is the honest state of it, and it is the
+package that moves money: `claim_provision` enforces once-per-address-forever
+and `withdraw` is `OperatorCap`-gated, and neither is currently pinned by a
+test. Treat that as the first thing worth attacking.
+
+Both packages target Move edition `2024.beta`.
 
 ## Licence
 
