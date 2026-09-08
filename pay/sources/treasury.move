@@ -28,11 +28,16 @@ const EInsufficientTreasurySui: u64 = 2;
 const EInsufficientTreasuryWal: u64 = 3;
 
 // Provision amounts. Observed per-write cost (5 consecutive mainnet runs):
-// 0.0034 SUI gas + 0.0175 WAL storage. Grace multiplier 3, rounded up:
+// 0.0034 SUI gas + 0.0175 WAL storage at 4 epochs. Grace multiplier 3:
 //   SUI: 3_424_784 * 3 = 10_274_352 -> 11_000_000 MIST (0.011 SUI)
-//   WAL: 17_496_171 * 3 = 52_488_513 -> 53_000_000 FROST (0.053 WAL)
+//   WAL (v1, 4 epochs): 17_496_171 * 3 = 52_488_513 -> 53_000_000 FROST (0.053 WAL)
+// UPGRADE 8 Sep 2026 (owner decision, 24 months of storage from the first
+// real sale onward): the client now registers 52 epochs. Storage at 52 epochs
+// for a 15 KB blob measured 0.282 WAL by `walrus store --dry-run` plus the
+// 0.0002 WAL write fee; times 3 = 0.847 -> 850_000_000 FROST (0.85 WAL).
+// Gas does not scale with epochs, so the SUI provision is unchanged.
 const PROVISION_SUI_MIST: u64 = 11_000_000;
-const PROVISION_WAL_FROST: u64 = 53_000_000;
+const PROVISION_WAL_FROST: u64 = 850_000_000;
 
 // Addendum thresholds (config constants; changing them is a package upgrade by
 // the operator - cocoon_pay stays COMPATIBLE indefinitely, so this remains

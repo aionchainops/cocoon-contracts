@@ -10,7 +10,7 @@ particularly on the authority model.
 | Package | Module | Mainnet package ID |
 | --- | --- | --- |
 | `journey` | `cocoon::journey` | `0x682d456a9b6c051c9b70e2f67bcee9602b1244278b898e70348b8c6214c214ab` |
-| `pay` | `cocoon_pay::treasury` | `0x50a0583be0008d76f2d94988b1d81960b61e18a647deb3004052f0ce038341bb` |
+| `pay` | `cocoon_pay::treasury` | `0xeccd5894241f950fbaf847403af7638328c0e8e478ee7e0cf3fb412a7c1afc9d` (v2, upgraded 8 Sep 2026, digest `JBBTaS35QMvHTmTZzJvfsvKWYBiieETku8Mm2rfujfiU`; v1 was `0x50a0583be0008d76f2d94988b1d81960b61e18a647deb3004052f0ce038341bb`) |
 
 ## What each package does
 

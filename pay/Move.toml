@@ -1,5 +1,8 @@
 [package]
 name = "cocoon_pay"
+# original package (v1): 0x50a0583be0008d76f2d94988b1d81960b61e18a647deb3004052f0ce038341bb
+# upgraded 8 Sep 2026 to v2 (PROVISION_WAL_FROST 0.85 WAL), digest JBBTaS35QMvHTmTZzJvfsvKWYBiieETku8Mm2rfujfiU
+published-at = "0xeccd5894241f950fbaf847403af7638328c0e8e478ee7e0cf3fb412a7c1afc9d"
 edition = "2024.beta"
 
 [addresses]
