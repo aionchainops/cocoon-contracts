@@ -9,7 +9,7 @@ particularly on the authority model.
 
 | Package | Module | Mainnet package ID |
 | --- | --- | --- |
-| `journey` | `cocoon::journey` | `0x682d456a9b6c051c9b70e2f67bcee9602b1244278b898e70348b8c6214c214ab` |
+| `journey` | `cocoon::journey` | `0x639b4d1d1f774cca3ae75d424733e1869aca05f7031b42e81fc16e7c49bbc91f` (v2, upgraded 10 Sep 2026, add-only getters, digest `Daghps4FeEMFG8rMae4uYYKA4PArXQFVopZvNKRknZoz`; v1 and the id Seal identities and existing objects use: `0x682d456a9b6c051c9b70e2f67bcee9602b1244278b898e70348b8c6214c214ab`) |
 | `pay` | `cocoon_pay::treasury` | `0xeccd5894241f950fbaf847403af7638328c0e8e478ee7e0cf3fb412a7c1afc9d` (v2, upgraded 8 Sep 2026, digest `JBBTaS35QMvHTmTZzJvfsvKWYBiieETku8Mm2rfujfiU`; v1 was `0x50a0583be0008d76f2d94988b1d81960b61e18a647deb3004052f0ce038341bb`) |
 
 ## What each package does

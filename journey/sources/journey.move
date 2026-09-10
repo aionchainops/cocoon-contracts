@@ -200,11 +200,24 @@ entry fun seal_approve(
 
 public fun buyer(session: &Session): address { session.buyer }
 
+/// Which Journey this Session was bought against. Added 10 Sep 2026 (add-only,
+/// compatible upgrade) so another package can tell one tier from another on
+/// chain: a Session is a credential, and this is the field that says which.
+public fun journey_id(session: &Session): ID { session.journey_id }
+
 public fun expiry_ms(session: &Session): u64 { session.expiry_ms }
 
 public fun blob_id(session: &Session): vector<u8> { session.blob_id }
 
 public fun is_completed(session: &Session): bool { session.completed }
+
+// Journey reads. Added 10 Sep 2026 (add-only) so a module holding a Session
+// can verify the terms it was bought under, from the Journey object itself.
+public fun price(journey: &Journey): u64 { journey.price }
+
+public fun treasury(journey: &Journey): address { journey.treasury }
+
+public fun window_ms(journey: &Journey): u64 { journey.window_ms }
 
 // ---------------------------------------------------------------------------
 // Tests
