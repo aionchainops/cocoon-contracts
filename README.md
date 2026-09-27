@@ -85,7 +85,7 @@ forwarding and expiry, and underpayment.
 **`pay` has no tests at all.** That is the honest state of it, and it is the
 package that moves money: `claim_provision` enforces once-per-address-forever
 and `withdraw` is `OperatorCap`-gated, and neither is currently pinned by a
-test. Treat that as the first thing worth attacking.
+test. This section records the test coverage of each package.
 
 Both packages target Move edition `2024.beta`.
 
