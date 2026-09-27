@@ -1,22 +1,3 @@
-// Cocoon - access policy package.
-//
-// This package holds no funds. Payment passes through `purchase` atomically
-// to the journey's treasury address in the same transaction; nothing ever
-// rests here. Its only job is to answer one question for Seal's key servers:
-// may this wallet, right now, decrypt this session's data?
-//
-// Two gates, both required:
-//   identity - the caller must be the wallet that paid for this session
-//   time     - the current on-chain time must be strictly before expiry
-//
-// Expiry is written once at purchase and is not mutable by anyone, including
-// the package owner. There is no reopen path by design.
-//
-// Key identity format: [pkg id][session object id][nonce]
-// The session object id is the namespace, so every re-upload across a
-// session is covered by this one policy without any syncing. The Walrus
-// blob id must never appear in the identity.
-
 module cocoon::journey;
 
 use sui::clock::Clock;
@@ -30,42 +11,38 @@ const ENotBuyer: u64 = 20;
 const EAlreadyCompleted: u64 = 21;
 const ENoAccess: u64 = 77;
 
-/// Global version marker, per Seal's upgrade guidance. `seal_approve` refuses
-/// to answer unless the shared version object matches the compiled VERSION,
-/// so an upgrade cannot silently leave an old policy answering requests.
+/// Package version marker read by `seal_approve`.
 public struct PackageVersion has key {
     id: UID,
     version: u64,
 }
 
+/// Authorises creating journeys.
 public struct AdminCap has key, store {
     id: UID,
 }
 
-/// A journey that can be bought. Align is the first one.
+/// A purchasable journey: price, treasury address and access window.
 public struct Journey has key {
     id: UID,
-    /// Wallet that receives payment.
+
     treasury: address,
-    /// Price, in the smallest unit of the payment coin.
+
     price: u64,
-    /// How long the buyer gets, in milliseconds from the moment of purchase.
+
     window_ms: u64,
 }
 
-/// One purchase by one wallet. Shared so key servers can resolve it, but
-/// only `buyer` can ever obtain a decryption key for the data it points at.
+/// A buyer's access record for one purchase of a journey.
 public struct Session has key {
     id: UID,
     journey_id: ID,
     buyer: address,
-    /// Absolute expiry in milliseconds. Written once, never mutable.
+
     expiry_ms: u64,
-    /// Walrus blob holding the current encrypted state. Superseded blobs
-    /// stay covered by the same policy because the Seal identity is derived
-    /// from this object's id, not from any blob id.
+
     blob_id: vector<u8>,
-    /// Set once the insight has been generated. No retaking.
+
     completed: bool,
 }
 
@@ -77,10 +54,7 @@ fun init(ctx: &mut TxContext) {
     transfer::public_transfer(AdminCap { id: object::new(ctx) }, ctx.sender());
 }
 
-// ---------------------------------------------------------------------------
-// Setup
-// ---------------------------------------------------------------------------
-
+/// Creates and shares a Journey.
 entry fun create_journey(
     _: &AdminCap,
     treasury: address,
@@ -96,14 +70,7 @@ entry fun create_journey(
     });
 }
 
-// ---------------------------------------------------------------------------
-// Purchase
-// ---------------------------------------------------------------------------
-
-/// Pay for a journey and open a session in one transaction. The coin is
-/// forwarded straight to the treasury - this package never holds it.
-/// Generic over the coin type so the same code works for SUI on testnet and
-/// USDC on mainnet.
+/// Pays the journey price and shares a new Session for the sender.
 entry fun purchase<T>(
     journey: &Journey,
     payment: &mut Coin<T>,
@@ -124,18 +91,14 @@ entry fun purchase<T>(
     });
 }
 
-// ---------------------------------------------------------------------------
-// Session state
-// ---------------------------------------------------------------------------
-
-/// Point the session at a newer Walrus blob after another visit.
+/// Records the Walrus blob id of the session's stored state.
 entry fun set_blob_id(session: &mut Session, blob_id: vector<u8>, ctx: &TxContext) {
     assert!(ctx.sender() == session.buyer, ENotBuyer);
     assert!(!session.completed, EAlreadyCompleted);
     session.blob_id = blob_id;
 }
 
-/// Record the final insight and lock the questionnaire.
+/// Marks the session completed and records its final blob id.
 entry fun complete(session: &mut Session, blob_id: vector<u8>, ctx: &TxContext) {
     assert!(ctx.sender() == session.buyer, ENotBuyer);
     assert!(!session.completed, EAlreadyCompleted);
@@ -143,10 +106,7 @@ entry fun complete(session: &mut Session, blob_id: vector<u8>, ctx: &TxContext) 
     session.completed = true;
 }
 
-// ---------------------------------------------------------------------------
-// Access control
-// ---------------------------------------------------------------------------
-
+/// Seal access check for an identity under a session.
 fun check_policy(
     id: vector<u8>,
     pkg_version: &PackageVersion,
@@ -156,19 +116,14 @@ fun check_policy(
 ): bool {
     assert!(pkg_version.version == VERSION, EWrongVersion);
 
-    // Identity gate.
     if (ctx.sender() != session.buyer) {
         return false
     };
 
-    // Time gate. Read live from the on-chain clock on every single request,
-    // never cached at encryption time - this is what makes expiry apply
-    // equally to every version of the session's data.
     if (c.timestamp_ms() >= session.expiry_ms) {
         return false
     };
 
-    // Namespace gate: the requested identity must sit under this session.
     let namespace = session.id.to_bytes();
     if (namespace.length() > id.length()) {
         return false
@@ -184,6 +139,7 @@ fun check_policy(
     true
 }
 
+/// Seal entry point: aborts with `ENoAccess` unless `check_policy` passes.
 entry fun seal_approve(
     id: vector<u8>,
     pkg_version: &PackageVersion,
@@ -194,34 +150,92 @@ entry fun seal_approve(
     assert!(check_policy(id, pkg_version, session, c, ctx), ENoAccess);
 }
 
-// ---------------------------------------------------------------------------
-// Reads
-// ---------------------------------------------------------------------------
-
+/// The session's buyer.
 public fun buyer(session: &Session): address { session.buyer }
 
-/// Which Journey this Session was bought against. Added 10 Sep 2026 (add-only,
-/// compatible upgrade) so another package can tell one tier from another on
-/// chain: a Session is a credential, and this is the field that says which.
+/// The journey the session was bought against.
 public fun journey_id(session: &Session): ID { session.journey_id }
 
+/// The session's expiry, in milliseconds.
 public fun expiry_ms(session: &Session): u64 { session.expiry_ms }
 
+/// The Walrus blob id of the session's stored state.
 public fun blob_id(session: &Session): vector<u8> { session.blob_id }
 
+/// Whether the session is completed.
 public fun is_completed(session: &Session): bool { session.completed }
 
-// Journey reads. Added 10 Sep 2026 (add-only) so a module holding a Session
-// can verify the terms it was bought under, from the Journey object itself.
+/// A purchase record that must be consumed in the same transaction.
+public struct Receipt {
+    journey_id: ID,
+    buyer: address,
+
+    coin: std::type_name::TypeName,
+
+    price_paid: u64,
+}
+
+/// As `purchase`, and also returns a Receipt.
+public fun purchase_receipt<T>(
+    journey: &Journey,
+    payment: &mut Coin<T>,
+    c: &Clock,
+    ctx: &mut TxContext,
+): Receipt {
+    let (session, receipt) = build_purchase(journey, payment, c, ctx);
+    transfer::share_object(session);
+    receipt
+}
+
+/// Purchase logic shared by `purchase` and `purchase_receipt`.
+fun build_purchase<T>(
+    journey: &Journey,
+    payment: &mut Coin<T>,
+    c: &Clock,
+    ctx: &mut TxContext,
+): (Session, Receipt) {
+    assert!(coin::value(payment) >= journey.price, EInvalidFee);
+    let fee = coin::split(payment, journey.price, ctx);
+    transfer::public_transfer(fee, journey.treasury);
+
+    let session = Session {
+        id: object::new(ctx),
+        journey_id: object::id(journey),
+        buyer: ctx.sender(),
+        expiry_ms: c.timestamp_ms() + journey.window_ms,
+        blob_id: vector[],
+        completed: false,
+    };
+
+    let receipt = Receipt {
+        journey_id: object::id(journey),
+        buyer: ctx.sender(),
+
+        coin: std::type_name::with_original_ids<T>(),
+        price_paid: journey.price,
+    };
+
+    (session, receipt)
+}
+
+/// Consumes a Receipt and returns its journey id, buyer, coin type and price paid.
+public fun burn_receipt(r: Receipt): (ID, address, std::type_name::TypeName, u64) {
+    let Receipt { journey_id, buyer, coin, price_paid } = r;
+    (journey_id, buyer, coin, price_paid)
+}
+
+/// Receipt fields.
+public fun receipt_journey_id(r: &Receipt): ID { r.journey_id }
+public fun receipt_buyer(r: &Receipt): address { r.buyer }
+public fun receipt_coin(r: &Receipt): std::type_name::TypeName { r.coin }
+public fun receipt_price_paid(r: &Receipt): u64 { r.price_paid }
+
+/// Journey fields.
 public fun price(journey: &Journey): u64 { journey.price }
 
 public fun treasury(journey: &Journey): address { journey.treasury }
 
 public fun window_ms(journey: &Journey): u64 { journey.window_ms }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[test_only]
 use sui::clock;
@@ -265,32 +279,25 @@ fun destroy_session_for_testing(s: Session) {
 fun test_identity_and_time_gates() {
     let buyer = @0xA;
     let ctx = &mut tx_context::dummy();
-    let mut c = clock::create_for_testing(ctx); // t = 0
+    let mut c = clock::create_for_testing(ctx);
 
     let pkg_version = new_version_for_testing(ctx);
     let session = new_session_for_testing(buyer, 1000, ctx);
 
-    // An identity under this session's namespace.
     let mut id = session.id.to_bytes();
     id.push_back(7);
 
-    // Wrong caller is denied even before expiry. tx_context::dummy() has a
-    // sender of @0x0, not the buyer.
     assert!(!check_policy(id, &pkg_version, &session, &c, ctx), 0);
 
-    // Right caller, before expiry, is allowed.
     let buyer_ctx = &tx_context::new_from_hint(buyer, 0, 0, 0, 0);
     assert!(check_policy(id, &pkg_version, &session, &c, buyer_ctx), 1);
 
-    // An identity outside the namespace is denied.
     let foreign = vector[9u8, 9u8, 9u8];
     assert!(!check_policy(foreign, &pkg_version, &session, &c, buyer_ctx), 2);
 
-    // At expiry exactly, denied.
     c.increment_for_testing(1000);
     assert!(!check_policy(id, &pkg_version, &session, &c, buyer_ctx), 3);
 
-    // And after.
     c.increment_for_testing(1);
     assert!(!check_policy(id, &pkg_version, &session, &c, buyer_ctx), 4);
 
@@ -315,7 +322,7 @@ fun test_purchase_forwards_funds_and_sets_expiry() {
 
     let mut payment = coin::mint_for_testing<SUI>(150, ctx);
     purchase(&journey, &mut payment, &c, ctx);
-    // 150 paid in, price 100, so 50 comes back to the buyer.
+
     assert!(coin::value(&payment) == 50, 0);
     coin::burn_for_testing(payment);
 
@@ -344,4 +351,151 @@ fun test_underpayment_aborts() {
     let Journey { id, .. } = journey;
     object::delete(id);
     c.destroy_for_testing();
+}
+
+#[test_only]
+public fun init_for_testing(ctx: &mut TxContext) { init(ctx) }
+
+#[test_only]
+public fun new_journey_for_testing(
+    treasury: address,
+    price: u64,
+    window_ms: u64,
+    ctx: &mut TxContext,
+): Journey {
+    Journey { id: object::new(ctx), treasury, price, window_ms }
+}
+
+#[test_only]
+public fun destroy_journey_for_testing(j: Journey) {
+    let Journey { id, .. } = j;
+    object::delete(id);
+}
+
+#[test_only]
+public fun destroy_session_for_dependent_testing(s: Session) {
+    let Session { id, .. } = s;
+    object::delete(id);
+}
+
+#[test_only]
+use sui::test_scenario as tsc;
+
+#[test]
+#[expected_failure(abort_code = EInvalidFee)]
+fun underpaying_purchase_receipt_aborts_with_the_same_code_as_purchase() {
+
+    let ctx = &mut tx_context::dummy();
+    let c = clock::create_for_testing(ctx);
+    let j = new_journey_for_testing(@0xA, 1_000, 1_000, ctx);
+    let mut pay = coin::mint_for_testing<SUI>(999, ctx);
+    let (session, receipt) = build_purchase(&j, &mut pay, &c, ctx);
+
+    destroy_session_for_testing(session);
+    let (_, _, _, _) = burn_receipt(receipt);
+    destroy_journey_for_testing(j);
+    clock::destroy_for_testing(c);
+    coin::burn_for_testing(pay);
+}
+
+#[test]
+#[expected_failure(abort_code = EInvalidFee)]
+fun underpaying_purchase_aborts_with_the_same_code() {
+
+    let ctx = &mut tx_context::dummy();
+    let c = clock::create_for_testing(ctx);
+    let j = new_journey_for_testing(@0xA, 1_000, 1_000, ctx);
+    let mut pay = coin::mint_for_testing<SUI>(999, ctx);
+    purchase(&j, &mut pay, &c, ctx);
+    destroy_journey_for_testing(j);
+    clock::destroy_for_testing(c);
+    coin::burn_for_testing(pay);
+}
+
+#[test]
+fun both_paths_take_exactly_the_price_and_leave_the_remainder() {
+
+    let ctx = &mut tx_context::dummy();
+    let c = clock::create_for_testing(ctx);
+    let j = new_journey_for_testing(@0xA, 1_000, 5_000, ctx);
+
+    let mut pay_a = coin::mint_for_testing<SUI>(1_500, ctx);
+    purchase(&j, &mut pay_a, &c, ctx);
+    let left_after_purchase = coin::value(&pay_a);
+
+    let mut pay_b = coin::mint_for_testing<SUI>(1_500, ctx);
+    let (session, receipt) = build_purchase(&j, &mut pay_b, &c, ctx);
+    let left_after_receipt = coin::value(&pay_b);
+
+    assert!(left_after_purchase == 500, 900);
+    assert!(left_after_receipt == 500, 901);
+    assert!(left_after_purchase == left_after_receipt, 902);
+
+    assert!(receipt_price_paid(&receipt) == 1_000, 903);
+    assert!(receipt_journey_id(&receipt) == object::id(&j), 904);
+    assert!(receipt_buyer(&receipt) == ctx.sender(), 905);
+
+    assert!(buyer(&session) == ctx.sender(), 906);
+    assert!(journey_id(&session) == object::id(&j), 907);
+    assert!(expiry_ms(&session) == 5_000, 908);
+    assert!(!is_completed(&session), 909);
+
+    destroy_session_for_testing(session);
+    let (_, _, _, _) = burn_receipt(receipt);
+    destroy_journey_for_testing(j);
+    clock::destroy_for_testing(c);
+    coin::burn_for_testing(pay_a);
+    coin::burn_for_testing(pay_b);
+}
+
+#[test]
+fun purchase_receipt_SHARES_its_session_just_as_purchase_does() {
+
+    let buyer_addr = @0xB0B;
+    let mut s = tsc::begin(buyer_addr);
+    {
+        let ctx = tsc::ctx(&mut s);
+        let c = clock::create_for_testing(ctx);
+        let j = new_journey_for_testing(@0xA, 1_000, 5_000, ctx);
+        let mut pay = coin::mint_for_testing<SUI>(1_000, ctx);
+
+        let receipt = purchase_receipt(&j, &mut pay, &c, ctx);
+        let (_, _, _, _) = burn_receipt(receipt);
+
+        tsc::next_tx(&mut s, buyer_addr);
+        let session = tsc::take_shared<Session>(&s);
+        assert!(buyer(&session) == buyer_addr, 910);
+        assert!(journey_id(&session) == object::id(&j), 911);
+        tsc::return_shared(session);
+
+        destroy_journey_for_testing(j);
+        clock::destroy_for_testing(c);
+        coin::burn_for_testing(pay);
+    };
+    tsc::end(s);
+}
+
+#[test]
+fun purchase_also_shares_its_session() {
+
+    let buyer_addr = @0xB0B;
+    let mut s = tsc::begin(buyer_addr);
+    {
+        let ctx = tsc::ctx(&mut s);
+        let c = clock::create_for_testing(ctx);
+        let j = new_journey_for_testing(@0xA, 1_000, 5_000, ctx);
+        let mut pay = coin::mint_for_testing<SUI>(1_000, ctx);
+
+        purchase(&j, &mut pay, &c, ctx);
+
+        tsc::next_tx(&mut s, buyer_addr);
+        let session = tsc::take_shared<Session>(&s);
+        assert!(buyer(&session) == buyer_addr, 920);
+        tsc::return_shared(session);
+
+        destroy_journey_for_testing(j);
+        clock::destroy_for_testing(c);
+        coin::burn_for_testing(pay);
+    };
+    tsc::end(s);
 }

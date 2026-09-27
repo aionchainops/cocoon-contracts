@@ -1,8 +1,10 @@
 [package]
 name = "cocoon"
-# original package (v1): 0x682d456a9b6c051c9b70e2f67bcee9602b1244278b898e70348b8c6214c214ab
-# upgraded 10 Sep 2026 to v2 (add-only getters: journey_id, price, treasury, window_ms), digest Daghps4FeEMFG8rMae4uYYKA4PArXQFVopZvNKRknZoz
-published-at = "0x639b4d1d1f774cca3ae75d424733e1869aca05f7031b42e81fc16e7c49bbc91f"
+# v1 (original): 0x682d456a9b6c051c9b70e2f67bcee9602b1244278b898e70348b8c6214c214ab
+# v2, 10 Sep 2026 (add-only reads): 0x639b4d1d1f774cca3ae75d424733e1869aca05f7031b42e81fc16e7c49bbc91f, digest Daghps4FeEMFG8rMae4uYYKA4PArXQFVopZvNKRknZoz
+# v3, 23 Sep 2026 (add-only Receipt functions): published-at below, digest F2HmZKCXt5m1a58SsAxMobhxPFdkwfFfGdbeZVdAQGzy
+# Built with sui 1.79.1.
+published-at = "0x78b3aba9c420730fc571e0388a5a821104361704cf7958aeb5d31fab65c2008d"
 edition = "2024.beta"
 
 [addresses]
